@@ -26,19 +26,26 @@ THE SOFTWARE.
 
 #include "vo_features.h"
 
-using namespace cv;
-using namespace std;
-
 #define MAX_FRAME 1000
 #define MIN_NUM_FEAT 2000
 
+string groundtruth_path = "/home/addwood1/Documents/KITTI_dataset/dataset/poses/01.txt";
+string dataset_path  = "/home/addwood1/Documents/KITTI_dataset/dataset/sequences/01/image_2/";
+
+
 // IMP: Change the file directories (4 places) according to where your dataset is saved before running!
+
+int getImageCount() {
+  vector<String> filenames;
+  cv::glob(dataset_path+"*.png", filenames, false);
+  return filenames.size();
+}
 
 double getAbsoluteScale(int frame_id, int sequence_id, double z_cal)	{
   
   string line;
   int i = 0;
-  ifstream myfile ("/home/avisingh/Datasets/KITTI_VO/00.txt");
+  ifstream myfile (groundtruth_path);
   double x =0, y=0, z = 0;
   double x_prev, y_prev, z_prev;
   if (myfile.is_open())
@@ -53,7 +60,7 @@ double getAbsoluteScale(int frame_id, int sequence_id, double z_cal)	{
       for (int j=0; j<12; j++)  {
         in >> z ;
         if (j==7) y=z;
-        if (j==3)  x=z;
+        if (j==3) x=z;
       }
       
       i++;
@@ -70,6 +77,31 @@ double getAbsoluteScale(int frame_id, int sequence_id, double z_cal)	{
 
 }
 
+Point getAbsolutePose(int frame_id) {
+  ifstream myfile(groundtruth_path);
+  string line;
+  int i = 0;
+  double z = 0, y = 0, tmp = 0;
+
+  if (myfile.is_open()) {
+    while (getline(myfile, line) && (i <= frame_id)) {
+      std::istringstream in(line);
+      for (int j = 0; j < 12; j++) {
+        in >> tmp;
+        if (j == 3)  z = tmp;
+        if (j == 11) y = tmp;
+      }
+      i++;
+    }
+    myfile.close();
+    return Point(z, y);
+  } else {
+    cout << "Unable to open file";
+    return Point(0, 0);
+  }
+}
+
+
 
 int main( int argc, char** argv )	{
 
@@ -79,11 +111,13 @@ int main( int argc, char** argv )	{
   ofstream myfile;
   myfile.open ("results1_1.txt");
 
+  int image_num = getImageCount();
+
   double scale = 1.00;
   char filename1[200];
   char filename2[200];
-  sprintf(filename1, "/home/avisingh/Datasets/KITTI_VO/00/image_2/%06d.png", 0);
-  sprintf(filename2, "/home/avisingh/Datasets/KITTI_VO/00/image_2/%06d.png", 1);
+  sprintf(filename1, (dataset_path+"%06d.png").c_str(), 0);
+  sprintf(filename2, (dataset_path+"%06d.png").c_str(), 1);
 
   char text[100];
   int fontFace = FONT_HERSHEY_PLAIN;
@@ -136,7 +170,7 @@ int main( int argc, char** argv )	{
   Mat traj = Mat::zeros(600, 600, CV_8UC3);
 
   for(int numFrame=2; numFrame < MAX_FRAME; numFrame++)	{
-  	sprintf(filename, "/home/avisingh/Datasets/KITTI_VO/00/image_2/%06d.png", numFrame);
+  	sprintf(filename, (dataset_path+"%06d.png").c_str(), numFrame);
     //cout << numFrame << endl;
   	Mat currImage_c = imread(filename);
   	cvtColor(currImage_c, currImage, COLOR_BGR2GRAY);
@@ -157,7 +191,8 @@ int main( int argc, char** argv )	{
   		currPts.at<double>(1,i) = currFeatures.at(i).y;
     }
 
-  	scale = getAbsoluteScale(numFrame, 0, t.at<double>(2));
+   // scale = getAbsoluteScale(numFrame, 0, t.at<double>(2));
+    scale = 1;
 
     //cout << "Scale is " << scale << endl;
 
@@ -191,15 +226,18 @@ int main( int argc, char** argv )	{
     int y = int(t_f.at<double>(2)) + 100;
     circle(traj, Point(x, y) ,1, CV_RGB(255,0,0), 2);
 
-    rectangle( traj, Point(10, 30), Point(550, 50), CV_RGB(0,0,0), CV_FILLED);
+    Point gt_pose = getAbsolutePose(numFrame);
+    int x_gt = int(gt_pose.x) + 300;
+    int y_gt = int(gt_pose.y) + 100;
+    circle(traj, Point(x_gt, y_gt), 1, CV_RGB(0,255,0), 2);
+
+    rectangle( traj, Point(10, 30), Point(550, 50), CV_RGB(0,0,0), cv::FILLED);
     sprintf(text, "Coordinates: x = %02fm y = %02fm z = %02fm", t_f.at<double>(0), t_f.at<double>(1), t_f.at<double>(2));
     putText(traj, text, textOrg, fontFace, fontScale, Scalar::all(255), thickness, 8);
 
     imshow( "Road facing camera", currImage_c );
     imshow( "Trajectory", traj );
-
     waitKey(1);
-
   }
 
   clock_t end = clock();
